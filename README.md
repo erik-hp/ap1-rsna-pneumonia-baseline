@@ -10,118 +10,177 @@ O objetivo é estabelecer um piso de desempenho reproduzível usando somente **c
 - Ruan Pablo Saraiva Ripardo — dados, pré-processamento e extração de características
 - Natanael Douglas Alves Feijão — EDA, literatura, análise de erro e redação científica
 
-## Protocolo implementado
-
-A frente de modelagem já está preparada para:
+## O que a frente de modelagem já cobre
 
 - baseline trivial com `DummyClassifier`;
-- SVM linear e SVM RBF;
+- SVM linear e RBF;
 - Random Forest;
 - HistGradientBoosting;
-- validação cruzada **aninhada** com `StratifiedGroupKFold`;
-- separação obrigatória por paciente/grupo;
-- ajuste de hiperparâmetros somente nos dados de treino;
-- AUC-ROC, AUC-PR, sensibilidade, especificidade, F1 e acurácia balanceada;
-- avaliação de detecção por AP/mAP com IoU e FROC;
-- geração de tabelas, predições out-of-fold e figuras para o artigo.
+- validação cruzada aninhada com `StratifiedGroupKFold`;
+- separação por paciente/grupo e verificação de overlap;
+- hiperparâmetros ajustados somente dentro do treino;
+- AUC-ROC, AUC-PR, sensibilidade, especificidade, F1 e balanced accuracy;
+- IoU, AP/mAP e FROC;
+- ablação automática de HOG/LBP/GLCM e de todas as combinações;
+- sensibilidade com/sem `class_weight`;
+- PCA opcional dentro do pipeline;
+- auditoria do CSV antes de treinar;
+- tabela média ± desvio, predições out-of-fold e casos de erro;
+- manifesto do experimento com versões;
+- smoke test ponta a ponta no GitHub Actions.
 
-A semente padrão é **42**.
-
-## Estrutura
-
-```text
-.
-├── docs/
-│   └── protocolo_experimental.md
-├── scripts/
-│   ├── evaluate_detection.py
-│   └── run_experiment.py
-├── src/
-│   └── rsna_baseline/
-│       ├── evaluation.py
-│       ├── experiment.py
-│       ├── io.py
-│       ├── modeling.py
-│       └── plots.py
-├── tests/
-├── requirements.txt
-└── pyproject.toml
-```
+A seed padrão é **42**.
 
 ## Instalação
 
 Recomendado: Python 3.11.
 
-```bash
-python -m venv .venv
-# Windows
-.venv\Scripts\activate
-
+```powershell
+py -3.11 -m venv .venv
+.\.venv\Scripts\Activate.ps1
+python -m pip install --upgrade pip
 pip install -r requirements.txt
 pip install -e .
+pytest -q
 ```
 
-## Contrato da matriz de características
+## Contrato de integração das features
 
-Para o baseline por imagem, o CSV deve ter uma linha por radiografia e, no mínimo:
+Arquivo esperado:
+
+```text
+data/processed/features_all.csv
+```
+
+Classificação por radiografia:
 
 ```text
 patientId,Target,hog_...,lbp_...,glcm_...
 ```
 
-Para localização/detecção, a matriz pode conter uma linha por região candidata e acrescentar:
+Para detecção/localização, preservar também:
 
 ```text
 patientId,x,y,width,height,Target,hog_...,lbp_...,glcm_...
 ```
 
-Nesse segundo formato, as coordenadas da região candidata são preservadas nas predições out-of-fold e podem ser avaliadas com o script de detecção.
+Não versionar DICOMs nem dados brutos.
 
-## Rodar os experimentos
+## Pré-validar antes de gastar tempo treinando
 
-Exemplo quando Ruan entregar HOG, LBP e GLCM em um único CSV:
-
-```bash
-python scripts/run_experiment.py \
-  --features data/processed/features_all.csv \
-  --group-col patientId \
-  --label-col Target \
-  --families "HOG=hog_,LBP=lbp_,GLCM=glcm_,ALL=*"
+```powershell
+python scripts/validate_features.py --features data/processed/features_all.csv --auto-ablation
 ```
 
-Resultados são gravados em `results/` e figuras em `figures/`.
+Esse comando falha cedo se houver NaN, infinito, colunas ausentes ou alvo fora de 0/1.
+
+## Estudo principal
+
+Quando as features reais estiverem disponíveis:
+
+```powershell
+python scripts/run_experiment.py --features data/processed/features_all.csv --auto-ablation
+```
+
+A ablação automática executa:
+
+```text
+HOG
+LBP
+GLCM
+HOG+LBP
+HOG+GLCM
+LBP+GLCM
+HOG+LBP+GLCM
+```
+
+contra o baseline trivial e os modelos clássicos configurados.
+
+Por padrão, as figuras são geradas apenas para a configuração de maior AUC-PR média, evitando dezenas de imagens. Use `--plots all` para gerar figuras de todas as combinações.
+
+## Saídas
+
+```text
+results/
+├── dataset_audit.json
+├── experiment_manifest.json
+├── metrics_folds.csv
+├── summary_numeric.csv
+├── summary_formatted.csv
+├── ablation_summary.csv
+├── predictions_oof.csv
+├── error_cases_top.csv
+├── best_params.json
+└── article_table.md
+
+figures/
+├── roc_*.png
+├── pr_*.png
+└── confusion_*.png
+```
+
+`article_table.md` já deixa a comparação descritor × modelo em formato fácil de transportar para o artigo.
+
+## Sensibilidade ao desbalanceamento
+
+O estudo principal usa pesos de classe. Para comparar com o mesmo protocolo sem pesos:
+
+```powershell
+python scripts/run_experiment.py --features data/processed/features_all.csv --auto-ablation --class-weight none --output-dir results_no_class_weight --figures-dir figures_no_class_weight
+```
+
+A justificativa acadêmica no artigo deve receber referência bibliográfica real; o código apenas deixa a comparação reproduzível.
+
+## PCA opcional
+
+Somente se a dimensionalidade real justificar:
+
+```powershell
+python scripts/run_experiment.py --features data/processed/features_all.csv --auto-ablation --pca-variance 0.95 --output-dir results_pca --figures-dir figures_pca
+```
+
+O PCA fica dentro do pipeline e é ajustado somente no treino de cada fold.
 
 ## Avaliar localização
 
-O ground truth deve conter:
+Ground truth:
 
 ```text
 patientId,x,y,width,height
 ```
 
-As predições devem conter:
+Predições:
 
 ```text
 patientId,x,y,width,height,score
 ```
 
-Exemplo:
-
-```bash
-python scripts/evaluate_detection.py \
-  --ground-truth data/processed/ground_truth_boxes.csv \
-  --predictions results/detection_predictions.csv \
-  --image-col patientId
+```powershell
+python scripts/evaluate_detection.py --ground-truth data/processed/ground_truth_boxes.csv --predictions results/detection_predictions.csv --image-col patientId --image-manifest data/processed/image_manifest.csv
 ```
 
-Se existir um manifesto contendo **todas** as imagens, incluindo negativos sem caixas, informe-o com `--image-manifest`; isso torna FP/imagem da FROC correto.
+O manifesto com todas as imagens, inclusive negativas, é recomendado para FROC correto em FP/imagem.
 
-## Reprodutibilidade
+## Smoke test local sem dados RSNA
 
-Não versionar DICOMs nem dados brutos. O repositório deve conter apenas código, configurações, instruções e resultados derivados pequenos. Antes da entrega, executar:
+Isso testa o pipeline, mas **não produz resultado científico**:
 
-```bash
-pytest -q
+```powershell
+python scripts/generate_smoke_features.py
+python scripts/validate_features.py --features data/processed/features_smoke.csv --auto-ablation
+python scripts/run_experiment.py --features data/processed/features_smoke.csv --families "HOG=hog_" --models svm_linear --outer-splits 2 --inner-splits 2
 ```
 
-e reproduzir os experimentos em um ambiente limpo seguindo somente este README.
+## Reprodutibilidade final
+
+Antes da entrega:
+
+1. criar ambiente Python 3.11 limpo;
+2. instalar somente pelo `requirements.txt`;
+3. executar `pytest -q`;
+4. gerar as features reais seguindo a frente de pré-processamento;
+5. rodar a pré-validação;
+6. rodar o estudo principal com seed 42;
+7. verificar que tabelas e figuras coincidem com as usadas no artigo.
+
+A lista operacional completa está em `docs/checklist_final_erik.md`.

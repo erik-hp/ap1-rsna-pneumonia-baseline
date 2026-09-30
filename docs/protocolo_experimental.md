@@ -12,56 +12,70 @@ Mesmo que no RSNA 2018 cada `patientId` costume identificar uma radiografia, o a
 
 ## 2. Semente
 
-Semente global do experimento:
-
-```text
-42
-```
-
-Toda operação aleatória que ofereça `random_state` deve utilizar essa semente ou uma derivação determinística dela.
+Semente global: **42**. Toda operação aleatória que ofereça `random_state` deve usar essa semente ou uma derivação determinística.
 
 ## 3. Validação cruzada aninhada
 
-O protocolo padrão usa:
+Protocolo padrão:
 
 - CV externo: `StratifiedGroupKFold(n_splits=5, shuffle=True, random_state=42)`;
 - CV interno: `StratifiedGroupKFold(n_splits=3, shuffle=True, random_state=42 + fold)`;
-- seleção de hiperparâmetros no CV interno;
-- estimativa de desempenho somente no fold externo nunca usado no ajuste.
+- hiperparâmetros escolhidos somente no CV interno;
+- desempenho estimado somente no fold externo nunca usado no ajuste;
+- seleção interna por **Average Precision (AUC-PR)**.
 
-A métrica de seleção do CV interno é **AUC-PR / Average Precision**, escolhida por ser informativa em cenários de desbalanceamento.
-
-Normalização e qualquer transformação ajustada aos dados devem permanecer dentro de um `Pipeline`. No código atual, os SVMs usam `StandardScaler` dentro do pipeline.
+Transformações ajustadas aos dados permanecem dentro do `Pipeline`. Os SVMs usam `StandardScaler`; PCA, quando ativado, também fica dentro do pipeline.
 
 ## 4. Baseline trivial
 
-O `DummyClassifier(strategy="prior")` é executado em todas as famílias de características. Ele funciona como piso obrigatório e permite demonstrar se os descritores/modelos extraem sinal acima da prevalência da classe.
+`DummyClassifier(strategy="prior")` é sempre executado. Ele estabelece o piso de comparação exigido no TP.
 
 ## 5. Modelos clássicos
-
-A grade inicial contém:
 
 1. SVM linear;
 2. SVM RBF;
 3. Random Forest;
 4. HistGradientBoosting.
 
-SVM e Random Forest usam balanceamento por peso de classe. HistGradientBoosting usa `class_weight="balanced"`.
+As grades de hiperparâmetros são deliberadamente compactas para manter reprodutibilidade e custo computacional compatível com o trabalho.
 
-As grades foram mantidas deliberadamente pequenas para que o experimento seja reproduzível dentro do prazo do TP. Se a amostra final for muito grande, a grade pode ser reduzida **antes** de olhar o desempenho do teste externo.
+## 6. Desbalanceamento
 
-## 6. Famílias de descritores
+Estratégia principal: pesos de classe (`class_weight`) nos modelos que suportam esse mecanismo.
 
-O contrato de integração espera, inicialmente:
+Motivação operacional: a estratégia atua no treinamento sem criar observações sintéticas e pode ser mantida dentro do estimador de cada fold. O código permite repetir o experimento com `--class-weight none` para uma análise de sensibilidade.
 
-- `hog_*` — gradiente/bordas;
-- `lbp_*` — textura local;
-- `glcm_*` — textura estatística;
-- `ALL` — concatenação de todas as features numéricas.
+**Importante para o artigo:** a justificativa metodológica final do uso de pesos de classe precisa ser acompanhada de referência bibliográfica lida pela equipe. O código não substitui essa citação.
 
-A comparação principal será **descritor × modelo** com média e desvio-padrão entre os folds externos.
+## 7. Famílias de descritores e ablação
 
-## 7. Métricas de classificação
+Contrato principal:
+
+- `hog_*`;
+- `lbp_*`;
+- `glcm_*`.
+
+Com `--auto-ablation`, o estudo gera automaticamente:
+
+- HOG;
+- LBP;
+- GLCM;
+- HOG+LBP;
+- HOG+GLCM;
+- LBP+GLCM;
+- HOG+LBP+GLCM.
+
+Isso permite medir a contribuição incremental das famílias sem mudar manualmente o protocolo.
+
+## 8. PCA opcional
+
+PCA não é ativado no experimento principal por padrão. O parâmetro `--pca-variance 0.95` permite executar uma análise adicional preservando 95% da variância.
+
+Como o PCA é ajustado dentro do pipeline e dentro de cada fold, não há ajuste prévio no conjunto completo.
+
+A decisão de reportar PCA deve depender da dimensionalidade real e de justificativa metodológica; não deve ser ativada apenas para procurar um número melhor.
+
+## 9. Métricas de classificação
 
 Por fold:
 
@@ -72,53 +86,63 @@ Por fold:
 - F1;
 - acurácia balanceada.
 
-Acurácia simples não é usada como métrica principal.
+Acurácia simples não é tratada como métrica principal.
 
-## 8. Detecção/localização
+## 10. Detecção/localização
 
-O desafio original é de detecção. Por isso, a classificação por imagem não deve ser apresentada como substituta de localização.
+O desafio original é de detecção. Classificação por imagem não substitui localização.
 
-Para avaliar localização, o pipeline precisa receber regiões candidatas com:
+Para localização, o pipeline precisa receber regiões candidatas com:
 
 ```text
 patientId,x,y,width,height,<features...>
 ```
 
-Cada região candidata é pontuada pelo classificador. As coordenadas e o escore formam a saída de detecção.
+O avaliador calcula AP em diferentes limiares de IoU, mAP 0.50:0.95 e FROC.
 
-O avaliador implementado calcula:
+Se a frente de features entregar somente um vetor por radiografia, a classificação poderá ser avaliada, mas a localização ficará incompleta. Por isso, as regiões candidatas e suas coordenadas precisam ser preservadas para o experimento final.
 
-- AP em diferentes limiares de IoU;
-- mAP em IoU 0.50:0.95;
-- FROC em pontos de falso-positivo por imagem.
+## 11. Auditoria de entrada
 
-### Contrato necessário com a frente de features
+Antes de treinar, `scripts/validate_features.py` verifica:
 
-Se Ruan entregar somente **uma feature vector por radiografia**, será possível medir classificação, mas **não** localização. Para cumprir a avaliação de detecção, a extração deve também produzir candidatos espaciais (por exemplo, janela/grade/ROI proposta por método clássico) com as coordenadas da região.
+- presença de `patientId` e `Target`;
+- alvo 0/1;
+- NaN nas features;
+- infinitos;
+- quantidade de pacientes/grupos;
+- prevalência positiva;
+- quantidade de features por família;
+- presença e validade básica das caixas candidatas, quando existentes.
 
-Os rótulos de treino dos candidatos podem ser derivados das bounding boxes oficiais, deixando explícito o limiar de IoU adotado. Esse limiar deve ser definido antes do experimento final.
+O mesmo relatório é salvo automaticamente como `results/dataset_audit.json`.
 
-## 9. Saídas auditáveis
+## 12. Saídas auditáveis
 
-O script principal gera:
+O experimento gera:
 
-- `results/metrics_folds.csv`;
-- `results/summary_numeric.csv`;
-- `results/summary_formatted.csv`;
-- `results/predictions_oof.csv`;
-- `results/best_params.json`;
-- curvas ROC e PR;
+- `metrics_folds.csv`;
+- `summary_numeric.csv`;
+- `summary_formatted.csv`;
+- `predictions_oof.csv`;
+- `best_params.json`;
+- `dataset_audit.json`;
+- `experiment_manifest.json`;
+- `article_table.md`;
+- `error_cases_top.csv`;
+- `ablation_summary.csv`, quando a ablação está ativa;
+- curva ROC;
+- curva Precision-Recall;
 - matriz de confusão.
 
-As predições são **out-of-fold**, portanto cada linha é prevista por um modelo que não treinou naquela observação.
+As predições são out-of-fold: cada observação é prevista por um modelo que não a utilizou no treinamento daquele fold.
 
-## 10. Congelamento
+## 13. Análise de erro
 
-Depois que a equipe aprovar:
+`error_cases_top.csv` seleciona falsos positivos com maior escore e falsos negativos com menor escore, separadamente por descritor e modelo. Esse arquivo será entregue à frente de análise qualitativa para inspeção das imagens originais.
 
-1. a amostra;
-2. a definição de região candidata;
-3. as três famílias de descritores;
-4. o protocolo de folds;
+## 14. Congelamento
 
-esses itens serão congelados. Mudanças posteriores devem ser registradas como correção metodológica ou ablação, não como tentativa informal de melhorar o resultado final.
+Depois que a equipe aprovar a amostra, a definição das regiões candidatas, as três famílias de descritores e os folds, esses elementos devem ser congelados.
+
+Mudanças posteriores devem ser registradas como correção metodológica ou experimento de ablação/sensibilidade, não como tentativa informal de melhorar o resultado final.

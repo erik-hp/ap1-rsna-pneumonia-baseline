@@ -16,3 +16,21 @@ jobs:
       - run: pip install -r requirements.txt
       - run: pip install -e .
       - run: pytest -q
+
+      - name: Generate deterministic smoke features
+        run: python scripts/generate_smoke_features.py --output /tmp/features_smoke.csv --n 40
+
+      - name: Validate input contract
+        run: python scripts/validate_features.py --features /tmp/features_smoke.csv --auto-ablation
+
+      - name: End-to-end experiment smoke test
+        run: >
+          python scripts/run_experiment.py
+          --features /tmp/features_smoke.csv
+          --families "HOG=hog_"
+          --models svm_linear
+          --outer-splits 2
+          --inner-splits 2
+          --output-dir /tmp/results
+          --figures-dir /tmp/figures
+          --plots best
