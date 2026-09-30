@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any
 
 from sklearn.base import BaseEstimator
+from sklearn.decomposition import PCA
 from sklearn.dummy import DummyClassifier
 from sklearn.ensemble import HistGradientBoostingClassifier, RandomForestClassifier
 from sklearn.pipeline import Pipeline
@@ -17,9 +18,58 @@ class ModelSpec:
     param_grid: dict[str, list[Any]]
 
 
-def build_model_specs(random_state: int = 42) -> dict[str, ModelSpec]:
-    """Modelos clássicos e grades pequenas o suficiente para o TP."""
-    return {
+def _with_optional_pca(
+    specs: dict[str, ModelSpec],
+    pca_variance: float | None,
+) -> dict[str, ModelSpec]:
+    if pca_variance is None:
+        return specs
+    if not 0.0 < pca_variance < 1.0:
+        raise ValueError("pca_variance deve estar entre 0 e 1, por exemplo 0.95.")
+
+    wrapped: dict[str, ModelSpec] = {}
+    for name, spec in specs.items():
+        if name == "dummy":
+            wrapped[name] = spec
+            continue
+
+        if isinstance(spec.estimator, Pipeline):
+            steps = []
+            for step_name, step in spec.estimator.steps:
+                if step_name == "model":
+                    steps.append(("pca", PCA(n_components=pca_variance)))
+                steps.append((step_name, step))
+            wrapped[name] = ModelSpec(Pipeline(steps), spec.param_grid)
+            continue
+
+        pipeline = Pipeline(
+            [
+                ("scale", StandardScaler()),
+                ("pca", PCA(n_components=pca_variance)),
+                ("model", spec.estimator),
+            ]
+        )
+        grid = {f"model__{key}": value for key, value in spec.param_grid.items()}
+        wrapped[name] = ModelSpec(pipeline, grid)
+
+    return wrapped
+
+
+def build_model_specs(
+    random_state: int = 42,
+    class_weight_mode: str = "balanced",
+    pca_variance: float | None = None,
+) -> dict[str, ModelSpec]:
+    """Modelos clássicos, com balanceamento e PCA opcionais para ablação."""
+    if class_weight_mode not in {"balanced", "none"}:
+        raise ValueError("class_weight_mode deve ser 'balanced' ou 'none'.")
+
+    balanced = class_weight_mode == "balanced"
+    svm_weight = "balanced" if balanced else None
+    rf_weight = "balanced_subsample" if balanced else None
+    hgb_weight = "balanced" if balanced else None
+
+    specs = {
         "dummy": ModelSpec(
             estimator=DummyClassifier(strategy="prior"),
             param_grid={},
@@ -32,7 +82,7 @@ def build_model_specs(random_state: int = 42) -> dict[str, ModelSpec]:
                         "model",
                         SVC(
                             kernel="linear",
-                            class_weight="balanced",
+                            class_weight=svm_weight,
                             probability=False,
                             random_state=random_state,
                         ),
@@ -49,7 +99,7 @@ def build_model_specs(random_state: int = 42) -> dict[str, ModelSpec]:
                         "model",
                         SVC(
                             kernel="rbf",
-                            class_weight="balanced",
+                            class_weight=svm_weight,
                             probability=False,
                             random_state=random_state,
                         ),
@@ -63,7 +113,7 @@ def build_model_specs(random_state: int = 42) -> dict[str, ModelSpec]:
         ),
         "random_forest": ModelSpec(
             estimator=RandomForestClassifier(
-                class_weight="balanced_subsample",
+                class_weight=rf_weight,
                 random_state=random_state,
                 n_jobs=-1,
             ),
@@ -75,7 +125,7 @@ def build_model_specs(random_state: int = 42) -> dict[str, ModelSpec]:
         ),
         "hist_gradient_boosting": ModelSpec(
             estimator=HistGradientBoostingClassifier(
-                class_weight="balanced",
+                class_weight=hgb_weight,
                 random_state=random_state,
             ),
             param_grid={
@@ -85,6 +135,7 @@ def build_model_specs(random_state: int = 42) -> dict[str, ModelSpec]:
             },
         ),
     }
+    return _with_optional_pca(specs, pca_variance)
 
 
 def continuous_score(estimator: BaseEstimator, X):
