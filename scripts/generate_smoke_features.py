@@ -21,7 +21,12 @@ def main() -> None:
         raise ValueError("--n deve ser par e >= 20.")
 
     rng = np.random.default_rng(args.seed)
-    target = np.array([0, 1] * (args.n // 2), dtype=int)
+
+    # Mantém as classes exatamente balanceadas, mas embaralha a ordem.
+    # Isso evita um padrão artificial entre patientId e rótulo no smoke test.
+    target = np.array([0] * (args.n // 2) + [1] * (args.n // 2), dtype=int)
+    rng.shuffle(target)
+
     df = pd.DataFrame(
         {
             "patientId": [f"SMOKE_{i:04d}" for i in range(args.n)],

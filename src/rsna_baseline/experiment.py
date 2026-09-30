@@ -32,6 +32,31 @@ def _validate_protocol(y: pd.Series, groups: pd.Series, config: ExperimentConfig
             f"Há apenas {groups.nunique()} grupos, menos que outer_splits={config.outer_splits}."
         )
 
+    groups_per_class = pd.DataFrame({"y": y, "group": groups}).groupby("y")["group"].nunique()
+    minimum_needed = max(config.outer_splits, config.inner_splits)
+    if (groups_per_class < minimum_needed).any():
+        details = {int(k): int(v) for k, v in groups_per_class.items()}
+        raise ValueError(
+            "Poucos grupos independentes em ao menos uma classe para o protocolo "
+            f"configurado. grupos_por_classe={details}, mínimo_recomendado={minimum_needed}."
+        )
+
+
+def _ensure_both_classes(
+    y: pd.Series,
+    train_idx,
+    test_idx,
+    context: str,
+) -> None:
+    train_classes = set(pd.unique(y.iloc[train_idx]))
+    test_classes = set(pd.unique(y.iloc[test_idx]))
+    if train_classes != {0, 1} or test_classes != {0, 1}:
+        raise ValueError(
+            f"{context} produziu uma partição sem as duas classes: "
+            f"treino={sorted(train_classes)}, validação/teste={sorted(test_classes)}. "
+            "Aumente a amostra ou reduza o número de folds."
+        )
+
 
 def run_nested_cv(
     X: pd.DataFrame,
@@ -54,12 +79,15 @@ def run_nested_cv(
         shuffle=True,
         random_state=config.seed,
     )
+    outer_splits = list(outer_cv.split(X, y, groups))
 
     metrics_rows: list[dict] = []
     prediction_rows: list[dict] = []
     best_params_rows: list[dict] = []
 
-    for fold, (train_idx, test_idx) in enumerate(outer_cv.split(X, y, groups), start=1):
+    for fold, (train_idx, test_idx) in enumerate(outer_splits, start=1):
+        _ensure_both_classes(y, train_idx, test_idx, f"CV externo fold {fold}")
+
         X_train = X.iloc[train_idx]
         X_test = X.iloc[test_idx]
         y_train = y.iloc[train_idx]
@@ -76,18 +104,26 @@ def run_nested_cv(
             shuffle=True,
             random_state=config.seed + fold,
         )
+        inner_splits = list(inner_cv.split(X_train, y_train, groups_train))
+        for inner_fold, (inner_train, inner_valid) in enumerate(inner_splits, start=1):
+            _ensure_both_classes(
+                y_train,
+                inner_train,
+                inner_valid,
+                f"CV interno outer={fold} fold={inner_fold}",
+            )
 
         for model_name, spec in model_specs.items():
             search = GridSearchCV(
                 estimator=spec.estimator,
                 param_grid=spec.param_grid,
                 scoring=config.scoring,
-                cv=inner_cv,
+                cv=inner_splits,
                 refit=True,
                 n_jobs=config.n_jobs,
                 error_score="raise",
             )
-            search.fit(X_train, y_train, groups=groups_train)
+            search.fit(X_train, y_train)
 
             best = search.best_estimator_
             y_score = np.asarray(continuous_score(best, X_test), dtype=float)
