@@ -1,0 +1,17 @@
+.venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ipynb_checkpoints/
+.DS_Store
+Thumbs.db
+
+# Dados RSNA não devem ser versionados
+data/raw/
+data/**/*.dcm
+*.dcm
+
+# Artefatos locais grandes
+models/
+*.joblib
+*.pkl
