@@ -1,6 +1,6 @@
-# Checklist final — frente Erik
+# Checklist final — modelagem, avaliação e integração
 
-## Pronto antes dos dados reais
+## Infraestrutura pronta antes dos dados reais
 
 - [x] Baseline trivial obrigatório.
 - [x] SVM linear e RBF.

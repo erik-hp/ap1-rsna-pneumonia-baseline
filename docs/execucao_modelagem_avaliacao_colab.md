@@ -1,6 +1,6 @@
-# Execução da frente do Erik no Google Colab
+# Pipeline de Modelagem, Avaliação e Detecção no Google Colab
 
-Este guia executa a parte pesada de modelagem, avaliação e detecção sem depender da máquina local.
+Este guia executa o pipeline experimental pesado de modelagem, avaliação e detecção sem depender da máquina local.
 
 ## Arquivos de entrada
 
@@ -21,7 +21,7 @@ MyDrive/RSNA_TP1/data/processed/
 Use:
 
 ```text
-notebooks/erik_experimentos_colab.ipynb
+notebooks/pipeline_modelagem_avaliacao_colab.ipynb
 ```
 
 Ele executa:

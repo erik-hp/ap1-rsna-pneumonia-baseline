@@ -183,18 +183,18 @@ Antes da entrega:
 6. rodar o estudo principal com seed 42;
 7. verificar que tabelas e figuras coincidem com as usadas no artigo.
 
-A lista operacional completa está em `docs/checklist_final_erik.md`.
+A lista operacional completa está em `docs/checklist_modelagem_avaliacao.md`.
 
 
 ## Execução pesada no Google Colab
 
-Para a frente de modelagem/avaliação existe um notebook pronto em:
+Para o pipeline de modelagem, avaliação e detecção existe um notebook pronto em:
 
 ```text
-notebooks/erik_experimentos_colab.ipynb
+notebooks/pipeline_modelagem_avaliacao_colab.ipynb
 ```
 
-O notebook parte dos arquivos derivados no Google Drive, executa a classificação completa e a detecção regional, e salva os resultados de volta no Drive. O passo a passo está em `docs/execucao_erik_colab.md`.
+O notebook parte dos arquivos derivados no Google Drive, executa a classificação completa e a detecção regional, e salva os resultados de volta no Drive. O passo a passo está em `docs/execucao_modelagem_avaliacao_colab.md`.
 
 A detecção final pode ser executada diretamente com:
 
