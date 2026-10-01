@@ -19,6 +19,7 @@ NON_FEATURE_COLUMNS = {
     "height",
     "fold",
     "score",
+    "max_iou",
 }
 
 

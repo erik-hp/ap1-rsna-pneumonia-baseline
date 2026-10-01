@@ -1,14 +1,16 @@
 import numpy as np
 import pytest
+
+from rsna_baseline.features import describe
 from rsna_baseline.preprocessing import (
+    IOU_POS,
     SIZE,
     WIN_SIZES,
     WIN_STRIDE,
+    max_iou,
+    preprocess,
     windows,
 )
-
-from rsna_baseline.features import describe
-from rsna_baseline.preprocessing import IOU_POS, SIZE, max_iou, preprocess, windows
 
 N_FEATURES = 324 + 10 + 12     # HOG + LBP + GLCM
 
@@ -34,7 +36,8 @@ def test_describe_is_finite_and_deterministic(region):
 
 
 def test_describe_flat_region_has_no_nan():
-    assert np.isfinite(list(describe(np.full((112, 112), 0.5, dtype=np.float32)).values())).all()
+    values = describe(np.full((112, 112), 0.5, dtype=np.float32)).values()
+    assert np.isfinite(list(values)).all()
 
 
 def test_lbp_histogram_sums_to_one(region):
@@ -44,29 +47,28 @@ def test_lbp_histogram_sums_to_one(region):
 
 def test_preprocess_shape_and_range():
     out = preprocess(np.random.default_rng(1).random((300, 400)).astype(np.float32) * 4000)
-    assert out.shape == (SIZE, SIZE) and out.dtype == np.float32
-    assert out.min() >= 0 and out.max() <= 1
+    assert out.shape == (SIZE, SIZE)
+    assert out.dtype == np.float32
+    assert out.min() >= 0
+    assert out.max() <= 1
 
 
 def test_windows_count_and_bounds():
     ws = list(windows())
 
     expected_count = sum(
-        (
-            ((SIZE - size) // WIN_STRIDE) + 1
-        ) ** 2
+        (((SIZE - size) // WIN_STRIDE) + 1) ** 2
         for size in WIN_SIZES
     )
 
+    assert expected_count == 175
     assert len(ws) == expected_count
 
     for x, y, w, h in ws:
         assert x >= 0
         assert y >= 0
-
         assert w == h
         assert w in WIN_SIZES
-
         assert x + w <= SIZE
         assert y + h <= SIZE
 
@@ -76,4 +78,5 @@ def test_max_iou():
     assert max_iou((0, 0, 100, 100), gts) == pytest.approx(1.0)
     assert max_iou((200, 200, 250, 250), gts) == 0.0
     assert max_iou((0, 0, 100, 100), np.empty((0, 4))) == 0.0
-    assert max_iou((0, 0, 50, 100), gts) == pytest.approx(0.5) and 0.5 >= IOU_POS
+    assert max_iou((0, 0, 50, 100), gts) == pytest.approx(0.5)
+    assert 0.5 >= IOU_POS

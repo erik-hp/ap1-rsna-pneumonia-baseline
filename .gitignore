@@ -8,8 +8,12 @@ Thumbs.db
 
 # Dados RSNA não devem ser versionados
 data/raw/
+data/processed*/
 data/**/*.dcm
 *.dcm
+
+# Metadados gerados por instalação/editable build
+*.egg-info/
 
 # Artefatos locais grandes
 models/

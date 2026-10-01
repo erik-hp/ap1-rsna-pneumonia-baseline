@@ -50,20 +50,15 @@ def load_dicom(path):
         img = img.max() - img
 
     meta = {
-        # identificação
         "DICOMPatientID": str(
             getattr(ds, "PatientID", "")
         ),
-
-        # dimensões
         "rows": int(
             getattr(ds, "Rows", img.shape[0])
         ),
         "cols": int(
             getattr(ds, "Columns", img.shape[1])
         ),
-
-        # informações da aquisição
         "Modality": str(
             getattr(ds, "Modality", "")
         ),
@@ -71,21 +66,15 @@ def load_dicom(path):
             getattr(ds, "ViewPosition", "")
         ),
         "PhotometricInterpretation": photometric,
-
-        # espaçamento físico do pixel
         "PixelSpacing": _dicom_value(
             getattr(ds, "PixelSpacing", None)
         ),
-
-        # informações de janela
         "WindowCenter": _dicom_value(
             getattr(ds, "WindowCenter", None)
         ),
         "WindowWidth": _dicom_value(
             getattr(ds, "WindowWidth", None)
         ),
-
-        # transformação dos valores armazenados
         "RescaleSlope": _safe_float(
             getattr(ds, "RescaleSlope", 1.0),
             1.0,
@@ -94,8 +83,6 @@ def load_dicom(path):
             getattr(ds, "RescaleIntercept", 0.0),
             0.0,
         ),
-
-        # informações demográficas úteis para auditoria/EDA
         "PatientSex": str(
             getattr(ds, "PatientSex", "")
         ),
@@ -140,12 +127,12 @@ def preprocess(img):
 
 def windows():
     """
-    Gera regiões candidatas na imagem 256x256.
+    Gera regiões candidatas quadradas na imagem 256x256.
 
-    112x112 -> 16 regiões
-    160x160 -> 9 regiões
+    Tamanhos: 48, 64, 96, 128 e 160 px.
+    Passo: 32 px.
 
-    Total: 25 regiões.
+    Contagem por escala: 49 + 49 + 36 + 25 + 16 = 175 regiões.
     """
 
     for size in WIN_SIZES:
