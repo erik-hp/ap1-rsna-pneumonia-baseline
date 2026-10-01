@@ -183,4 +183,33 @@ Antes da entrega:
 6. rodar o estudo principal com seed 42;
 7. verificar que tabelas e figuras coincidem com as usadas no artigo.
 
-A lista operacional completa está em `docs/checklist_final_erik.md`.
+A lista operacional completa está em `docs/checklist_modelagem_avaliacao.md`.
+
+
+## Execução pesada no Google Colab
+
+Para o pipeline de modelagem, avaliação e detecção existe um notebook pronto em:
+
+```text
+notebooks/pipeline_modelagem_avaliacao_colab.ipynb
+```
+
+O notebook parte dos arquivos derivados no Google Drive, executa a classificação completa e a detecção regional, e salva os resultados de volta no Drive. O passo a passo está em `docs/execucao_modelagem_avaliacao_colab.md`.
+
+A detecção final pode ser executada diretamente com:
+
+```powershell
+python scripts/run_detection_experiment.py `
+  --features-regions data/processed/features_regions.csv `
+  --ground-truth data/processed/ground_truth_boxes.csv `
+  --image-manifest data/processed/image_manifest.csv `
+  --model hist_gradient_boosting `
+  --family "HOG+LBP+GLCM" `
+  --outer-splits 5 `
+  --inner-splits 3 `
+  --max-neg-pos-ratio 3 `
+  --nms-iou 0.30 `
+  --top-k 20
+```
+
+As predições são out-of-fold por paciente. O undersampling de negativos ocorre somente no treino, e `max_iou` nunca entra nas features.
