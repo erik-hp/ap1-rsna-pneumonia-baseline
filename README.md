@@ -186,6 +186,16 @@ Antes da entrega:
 A lista operacional completa está em `docs/checklist_modelagem_avaliacao.md`.
 
 
+## Pré-processamento e extração de características no Google Colab
+
+O pipeline que prepara os arquivos derivados fica em:
+
+```text
+notebooks/pipeline_preprocessamento_extracao_features_colab.ipynb
+```
+
+Ele baixa os dados de treino do RSNA, executa o pré-processamento DICOM, gera as 175 regiões candidatas multiescala e extrai HOG/LBP/GLCM. Os arquivos gerados alimentam o pipeline de modelagem e avaliação.
+
 ## Execução pesada no Google Colab
 
 Para o pipeline de modelagem, avaliação e detecção existe um notebook pronto em:
