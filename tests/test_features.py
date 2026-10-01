@@ -1,5 +1,11 @@
 import numpy as np
 import pytest
+from rsna_baseline.preprocessing import (
+    SIZE,
+    WIN_SIZES,
+    WIN_STRIDE,
+    windows,
+)
 
 from rsna_baseline.features import describe
 from rsna_baseline.preprocessing import IOU_POS, SIZE, max_iou, preprocess, windows
@@ -44,8 +50,25 @@ def test_preprocess_shape_and_range():
 
 def test_windows_count_and_bounds():
     ws = list(windows())
-    assert len(ws) == 25
-    assert all(0 <= x and 0 <= y and x + w <= SIZE and y + h <= SIZE for x, y, w, h in ws)
+
+    expected_count = sum(
+        (
+            ((SIZE - size) // WIN_STRIDE) + 1
+        ) ** 2
+        for size in WIN_SIZES
+    )
+
+    assert len(ws) == expected_count
+
+    for x, y, w, h in ws:
+        assert x >= 0
+        assert y >= 0
+
+        assert w == h
+        assert w in WIN_SIZES
+
+        assert x + w <= SIZE
+        assert y + h <= SIZE
 
 
 def test_max_iou():

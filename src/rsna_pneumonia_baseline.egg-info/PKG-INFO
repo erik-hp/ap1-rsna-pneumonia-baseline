@@ -1,0 +1,5 @@
+Metadata-Version: 2.4
+Name: rsna-pneumonia-baseline
+Version: 0.1.0
+Summary: Classical ML baseline for RSNA 2018 Pneumonia Detection
+Requires-Python: >=3.10
