@@ -189,24 +189,89 @@ def froc(
     iou_threshold: float = 0.5,
     fp_per_image_points: Iterable[float] = (0.125, 0.25, 0.5, 1.0, 2.0, 4.0, 8.0),
 ) -> dict[str, float]:
+    """
+    Calcula FROC em uma única passagem sobre as predições ordenadas.
+
+    A implementação anterior recalculava todo o matching para cada score
+    distinto, levando a custo aproximadamente quadrático. Aqui o matching
+    1:1 é atualizado incrementalmente e um ponto operacional é registrado
+    somente após consumir todas as predições com o mesmo score, preservando
+    a semântica de um limiar de score.
+    """
     image_ids = list(dict.fromkeys(map(str, image_ids)))
     if not image_ids:
         raise ValueError("FROC requer ao menos um image_id.")
 
     total_gt = len(ground_truth)
     if total_gt == 0:
-        return {f"froc_sens_at_{p:g}_fp_per_image": float("nan") for p in fp_per_image_points}
+        return {
+            f"froc_sens_at_{p:g}_fp_per_image": float("nan")
+            for p in fp_per_image_points
+        }
 
-    unique_scores = np.sort(predictions["score"].unique())[::-1] if not predictions.empty else np.array([])
-    operating_points = [(0.0, 0.0)]
+    gt_boxes = _prepare_boxes(ground_truth, image_col)
+    matched = {
+        image_id: np.zeros(len(boxes), dtype=bool)
+        for image_id, boxes in gt_boxes.items()
+    }
 
-    for threshold in unique_scores:
-        kept = predictions[predictions["score"] >= threshold]
-        tp, fp = _match_counts(ground_truth, kept, image_col, iou_threshold)
-        operating_points.append((fp / len(image_ids), tp / total_gt))
+    if predictions.empty:
+        operating_points = [(0.0, 0.0)]
+    else:
+        required = {image_col, "x", "y", "width", "height", "score"}
+        missing = required.difference(predictions.columns)
+        if missing:
+            raise ValueError(f"Predições sem colunas para FROC: {sorted(missing)}")
+
+        ordered = predictions.sort_values(
+            "score",
+            ascending=False,
+            kind="stable",
+        ).reset_index(drop=True)
+
+        tp = 0
+        fp = 0
+        operating_points = [(0.0, 0.0)]
+
+        # Agrupar empates é importante: um threshold inclui todas as
+        # predições com o mesmo score, nunca apenas parte delas.
+        for _, score_group in ordered.groupby("score", sort=False):
+            for row in score_group.itertuples(index=False):
+                record = row._asdict()
+                image_id = str(record[image_col])
+                pred_box = (
+                    record["x"],
+                    record["y"],
+                    record["width"],
+                    record["height"],
+                )
+                candidates = gt_boxes.get(image_id, [])
+
+                if not candidates:
+                    fp += 1
+                    continue
+
+                ious = np.asarray([box_iou(pred_box, gt) for gt in candidates])
+                best = int(np.argmax(ious))
+                if (
+                    ious[best] >= iou_threshold
+                    and not matched[image_id][best]
+                ):
+                    matched[image_id][best] = True
+                    tp += 1
+                else:
+                    fp += 1
+
+            operating_points.append(
+                (fp / len(image_ids), tp / total_gt)
+            )
 
     result = {}
     for target in fp_per_image_points:
-        sensitivities = [sens for fppi, sens in operating_points if fppi <= target]
-        result[f"froc_sens_at_{target:g}_fp_per_image"] = float(max(sensitivities, default=0.0))
+        sensitivities = [
+            sens for fppi, sens in operating_points if fppi <= target
+        ]
+        result[f"froc_sens_at_{target:g}_fp_per_image"] = float(
+            max(sensitivities, default=0.0)
+        )
     return result

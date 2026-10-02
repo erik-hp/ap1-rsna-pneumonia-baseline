@@ -47,3 +47,48 @@ def test_froc_perfect():
     pred["score"] = [0.9]
     values = froc(gt, pred, image_ids=["a", "negative"])
     assert values["froc_sens_at_0.125_fp_per_image"] == 1.0
+
+
+def test_froc_tied_scores_respect_threshold_semantics():
+    gt = pd.DataFrame(
+        [{"patientId": "a", "x": 0, "y": 0, "width": 10, "height": 10}]
+    )
+    pred = pd.DataFrame(
+        [
+            {
+                "patientId": "a",
+                "x": 0,
+                "y": 0,
+                "width": 10,
+                "height": 10,
+                "score": 0.9,
+            },
+            {
+                "patientId": "negative",
+                "x": 20,
+                "y": 20,
+                "width": 5,
+                "height": 5,
+                "score": 0.9,
+            },
+        ]
+    )
+    values = froc(
+        gt,
+        pred,
+        image_ids=["a", "negative"],
+        fp_per_image_points=(0.25, 0.5),
+    )
+    assert values["froc_sens_at_0.25_fp_per_image"] == 0.0
+    assert values["froc_sens_at_0.5_fp_per_image"] == 1.0
+
+
+def test_froc_empty_predictions_returns_zero_sensitivity():
+    gt = pd.DataFrame(
+        [{"patientId": "a", "x": 0, "y": 0, "width": 10, "height": 10}]
+    )
+    pred = pd.DataFrame(
+        columns=["patientId", "x", "y", "width", "height", "score"]
+    )
+    values = froc(gt, pred, image_ids=["a"])
+    assert all(value == 0.0 for value in values.values())
