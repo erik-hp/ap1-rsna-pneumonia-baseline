@@ -202,6 +202,29 @@ def main() -> None:
         )
 
     candidates = pd.concat(candidate_frames, ignore_index=True)
+
+    # Preserve the expensive OOF outputs before NMS/mAP/FROC. If any
+    # post-processing step fails, the five trained folds are not lost.
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    pd.DataFrame(metric_rows).to_csv(
+        output_dir / "region_metrics_folds.csv",
+        index=False,
+    )
+    candidates.to_csv(
+        output_dir / "detection_candidates_oof.csv.gz",
+        index=False,
+        compression="gzip",
+    )
+    (output_dir / "detection_best_params.json").write_text(
+        json.dumps(best_params, indent=2, ensure_ascii=False),
+        encoding="utf-8",
+    )
+    print(
+        "OOF regional preservado. Iniciando NMS, mAP e FROC "
+        "com cálculo FROC incremental."
+    )
+
     predictions = non_max_suppression(
         candidates,
         image_col=args.group_col,
@@ -227,28 +250,12 @@ def main() -> None:
         )
     )
 
-    output_dir = Path(args.output_dir)
-    output_dir.mkdir(parents=True, exist_ok=True)
-
-    pd.DataFrame(metric_rows).to_csv(
-        output_dir / "region_metrics_folds.csv",
-        index=False,
-    )
-    candidates.to_csv(
-        output_dir / "detection_candidates_oof.csv.gz",
-        index=False,
-        compression="gzip",
-    )
     detection_predictions.to_csv(
         output_dir / "detection_predictions.csv",
         index=False,
     )
     (output_dir / "detection_metrics.json").write_text(
         json.dumps(detection_metrics, indent=2),
-        encoding="utf-8",
-    )
-    (output_dir / "detection_best_params.json").write_text(
-        json.dumps(best_params, indent=2, ensure_ascii=False),
         encoding="utf-8",
     )
     manifest_out = {
